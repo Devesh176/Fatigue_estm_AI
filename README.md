@@ -60,7 +60,8 @@ Data for each coupon was collected under three different conditions:
 
 ### Provided Tools (Matlab Scripts)
 Several Matlab scripts are included to help users process and analyze the data. These scripts must be run from within the specific coupon's folder.
-- **NEWFILEDEF.m:** Converts the data files from their original structure to the new, proposed format.
-- **CHANGEPATH.m:** Corrects the internal path definition for specific coupons where the data acquisition convention differed.
-- **DATA_MANAGEMENT.m:** A user interface to navigate the dataset, allowing users to import and plot data for a specific cycle or actuator-sensor pair.
-- **PIECE1.m & PIECE2.m:** Example scripts that demonstrate how to import Lamb wave signals based on user-defined criteria like frequency, boundary condition, or for every cycle in the experiment
+- `NEWFILEDEF.m:` Converts the data files from their original structure to the new, proposed format.
+- `CHANGEPATH.m:` Corrects the internal path definition for specific coupons where the data acquisition convention differed.
+- `DATA_MANAGEMENT.m:` A user interface to navigate the dataset, allowing users to import and plot data for a specific cycle or actuator-sensor pair.
+- `PIECE1.m & PIECE2.m:` Example scripts that demonstrate how to import Lamb wave signals based on user-defined criteria like frequency, boundary condition, or for every cycle in the experiment
+
