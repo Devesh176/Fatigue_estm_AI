@@ -65,4 +65,121 @@ Several Matlab scripts are included to help users process and analyze the data. 
 - `DATA_MANAGEMENT.m:` A user interface to navigate the dataset, allowing users to import and plot data for a specific cycle or actuator-sensor pair.
 - `PIECE1.m & PIECE2.m:` Example scripts that demonstrate how to import Lamb wave signals based on user-defined criteria like frequency, boundary condition, or for every cycle in the experiment
 
+---
+
+## Decoding the data files
+
+### PZT-data 
+- The file nomenclature looks like:
+```bash
+L[Layup]S[Specimen]_[Cycle]_[Condition]_[Repeat].mat
+```
+where, for eg. `L1S11_0_1_2.mat` would break down as-
+
+|    Segment    |                               Meaning                              |
+|:-------------:|:------------------------------------------------------------------:|
+| L1(layup)     | Layup type — here, Layup 1: [0₂ 90₄]                               |
+| S11(Specimen) | Specimen number — the 11th coupon tested with Layup 1              |
+| 0(Cycle)      | Cycle number — fatigue cycle at which data was collected (e.g., 0) |
+| 1(Condition)  | Boundary condition:                                                |
+|               | - 0: Baseline (undamaged, no load)                                 |
+|               | - 1: Loaded                                                        |
+|               | - 2: Clamped (unloaded but fixed)                                  |
+|               | - 3: Traction-free (removed from machine)                          |
+| 2(Repeat)     | Repeat index — distinguishes multiple recordings under same setup  |
+
+- **What is inside the .mat file?**: Each file contains a MATLAB struct with fields like-
+  - `coupon.cycles`: Fatigue cycle number
+  - `coupon.load`: Load applied (in Kips)
+  - `coupon.comment`: Any comment (eg. 'Baseline' or '14 cracks observed (H), 1 crack observed (V), delamination on 6-7')
+  - `coupon.condition`: Boundary condition label
+  - `coupon.path_data`: Array of 252 paths (36 actuator-sensor pairs × 7 frequencies)
+    - Each path_data(i) includes:
+      - `actuator`, `sensor`, `amplitude`, `frequency`, `gain`
+      - `signal_actuator`: waveform from actuator (2000x1 in shape for a single path out of 252)
+      - `signal_sensor`: waveform from sensor (2000x1 in shape for a single path out of 252)
+      - `sampling_rate`: 1200000
+  - `coupon.straingage_data`: Optional strain data and stiffness degradation
+  - `coupon.XRay_data`: Path to X-ray image file (if available)
+
+---
+### StrainData (Still need to understand more clearly, also about the regions A, M and S)
+- The file nomenclature looks like
+  ```bash
+  L[Layup]_S[Specimen]_F[CycleIndex]_STRAIN_[Region]_DAT.mat
+  ```
+where, for eg. `L1_S11_F01_STRAIN_M_DAT.mat` - 
+
+|  Segment |                             Meaning                            |
+|:--------:|:--------------------------------------------------------------:|
+| L1       | Layup type — e.g., Layup 1: [0₂ 90₄]                           |
+| S11      | Specimen number — Coupon 11                                    |
+| F01      | Fatigue cycle index — not the actual cycle count, but an index |
+| STRAIN_A | Strain gauge location:                                         |
+|          | - A: Actuator region                                           |
+|          | - M: Middle region                                             |
+|          | - S: Sensor region                                             |
+| DAT.mat  | MATLAB data file containing strain measurements                |
+
+and for eg. `L1_S11_S11_STRAIN_A_DAT.mat` - This format appears when the cycle index is replaced by the specimen ID again. It typically indicates:
+    - Baseline strain data for the specimen Or a non-cycle-specific strain snapshot (e.g., initial calibration or reference)
+
+|  Segment |                         Meaning                        |
+|:--------:|:------------------------------------------------------:|
+| L1       | Layup type                                             |
+| S11_S11  | Specimen ID repeated — implies static or baseline data |
+| STRAIN_A | Region: Actuator                                       |
+| DAT.mat  | MATLAB strain data                                     |
+
+- **What is inside the .mat file?**: Each strain file — whether it's STRAIN_A, STRAIN_M, STRAIN_S, or the general DAT file — contains four separate arrays:
+  - *Contents*: Variable Name	Description
+    - `strain1`	Strain signal from gauge 1 in the region
+    - `strain2`	Strain signal from gauge 2
+    - `strain3`	Strain signal from gauge 3
+    - `strain4`	Strain signal from gauge 4
+  - All are of type double
+  - Each array may have different lengths depending on sampling duration or gauge configuration
+  - No struct wrapping — these are flat variables in the .mat workspace
+  - The region (A, M, S) is encoded in the filename
+
+  - The cycle index or baseline is also encoded in the filename
+
+  - The strain1–strain4 arrays represent parallel strain readings from that region, possibly from different physical gauges or channels
+
+  - Example: L1_S11_F01_STRAIN_M_DAT.mat → Middle region strain data for Layup 1, Specimen 11, Cycle Index 01 → Contains strain1, strain2, strain3, strain4 — all from the middle region
+- **How these files help us?**
+  - Plot each strainX to inspect signal quality, drift, or anomalies
+  - Compare across cycles to track stiffness degradation
+  - Align with PZT signals and X-ray images for holistic damage assessmen
+
+---
+
+### XRay
+- The file nomenclature goes as-
+  ```bash
+  L[Layup]S[Specimen]_[Cycle].jpg
+  ```
+where, for eg  `L3S20_1_2.jpg`-
+
+| Segment |                                Meaning                               |
+|:-------:|:--------------------------------------------------------------------:|
+| L3      | Layup type — e.g., Layup 3: [90₂ 45 45]₂                             |
+| S20     | Specimen number — Coupon 20                                          |
+| 1       | Cycle index or fatigue stage — often corresponds to a specific cycle |
+| .jpg    | Image format — X-ray scan of the coupon                              |
+
+or for eg. `L3S20_baseline.jpg`
+
+|  Segment |                                Meaning                               |
+|:--------:|:--------------------------------------------------------------------:|
+| baseline | Undamaged state — no load, no fatigue                                |
+| .jpg     | Initial X-ray image                                                  |
+
+- **How these files can help?**
+  - Each coupon folder contains these X-ray .jpg files.
+  - These files are referenced in the MATLAB struct under coupon.XRay_data.file_location (PZT-data)
+  - Used to visually confirm damage progression alongside:
+    - Lamb wave signal changes
+    - Strain gauge degradation
+    - Load and cycle history  
 
