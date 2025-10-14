@@ -30,7 +30,7 @@ The dataset documents a series of fatigue aging tests on Carbon Fiber Reinforced
   - 90° fibers resist transverse loads → improve dimensional stability.
   - ±45° fibers enhance shear resistance → crucial for fatigue and torsion.
   - Testing Protocol: The coupons underwent tension-tension fatigue tests at a frequency of 5.0 Hz with a stress ratio of R ≈ 0.14. The tests followed ASTM Standards D3039 and D3479.
-
+Note: L1_S17 stands for Layup 1 specimen 17th of Layup 1.
 ---
 
 ### Data Acquisition
@@ -64,4 +64,5 @@ Several Matlab scripts are included to help users process and analyze the data. 
 - `CHANGEPATH.m:` Corrects the internal path definition for specific coupons where the data acquisition convention differed.
 - `DATA_MANAGEMENT.m:` A user interface to navigate the dataset, allowing users to import and plot data for a specific cycle or actuator-sensor pair.
 - `PIECE1.m & PIECE2.m:` Example scripts that demonstrate how to import Lamb wave signals based on user-defined criteria like frequency, boundary condition, or for every cycle in the experiment
+
 
