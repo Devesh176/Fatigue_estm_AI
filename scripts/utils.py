@@ -1,144 +1,147 @@
 # # scripts/utils.py
 # import numpy as np
 
-# # --- Physical Constants (from Table 1 & text in the paper) ---
-# # [cite: 157, 76]
-# Ex_S = 137.5e9   # Longitudinal Modulus [Pa]
-# Ex_90 = 8.4e9     # Transverse Modulus [Pa]
+# # --- Physical Constants ---
+# Ex_S = 137.5e9   # Longitudinal Modulus [Pa] (Ex)
+# Ex_90 = 8.4e9     # Transverse Modulus [Pa] (Ey)
 # G = 6.2e9         # Shear Modulus [Pa]
-# ts = 0.132e-3 * 4 # Thickness of 0-degree sub-laminate (assuming 4 plies)
-# t90 = 0.132e-3 * 8 # Thickness of 90-degree sub-laminate (assuming 8 plies)
-# d0 = 0.01e-3      # Resin-rich thickness (assumed typical value)
-# l_bar = 0.5       # Dimensionless half-spacing between cracks (assumed constant for simplicity)
+# t = 0.132e-3      # Ply thickness [m]
 
-# # Paris' Law parameters (these are what the PF will estimate, we start with a guess)
-# # Based on Figure 2d, initial guess might be around these values
-# A_t = 8.5e-5
-# alpha_t = 1.8
+# n_plies_0 = 4     # n=4
+# n_plies_90 = 8    # m=8
+# ts = t * n_plies_0  
+# t90 = t * n_plies_90 
+# d0 = 0.01e-3      
+# l_bar = 0.5       
 
-# # --- Physics-Based Models ---
+# # --- Pre-calculate constants ---
+# XI = np.sqrt((G / d0) * (1 / (Ex_S * ts) + 1 / (Ex_90 * t90)))
+# A_CONST = (Ex_S * t90) / (Ex_90 * ts)
+# R_L_CONST = (2 / XI) * np.tanh(XI * l_bar)
 
-# def calculate_xi():
-#     """Calculates the xi term from Equation 2.""" # [cite: 57]
-#     term1 = 1 / (Ex_S * ts)
-#     term2 = 1 / (Ex_90 * t90)
-#     return np.sqrt((G / d0) * (term1 + term2))
 
-# def stiffness_reduction_model(rho, xi):
+# def g1_paris_law_model(rho, A_t, alpha_t):
 #     """
-#     Calculates stiffness reduction 'D' based on crack density 'rho'.
-#     This is based on Equation 6 from the paper.
-#     """ # [cite: 72]
-#     a = (Ex_S * t90) / (Ex_90 * ts) # [cite: 76]
-#     R_l = (2 / xi) * np.tanh(xi * l_bar) # [cite: 74]
-#     D = 1 / (1 + a * rho * R_l)
-#     return D
-
-# def paris_law_crack_growth(rho, S_max=0.8*550e6, R=0.14):
+#     Calculates the *next* rho after ONE CYCLE.
 #     """
-#     Calculates the next crack density rho_n from rho_n-1.
-#     This is the discrete form from Equation 5.
-#     Here, we simplify Delta_G_t to be a function of rho.
-#     For this example, we'll use a simplified energy release rate
-#     that increases with crack density. A full implementation would
-#     recalculate G_t based on stress analysis (Eq. 1).
-#     """ # [cite: 65]
-#     # Simplified placeholder for the complex Energy Release Rate (G_t)
-#     # A real implementation requires the variational stress analysis from the paper.
-#     # We model it as a value that increases as cracks form.
-#     delta_G_t = 100 + 200 * rho
+#     # --- START FIX: More stable physics model ---
+#     # Using 10*rho instead of 100*rho to prevent explosion
+#     delta_G_t = 1.0 + 10.0 * rho
+#     # --- END FIX ---
+    
+#     delta_rho_per_cycle = A_t * (delta_G_t ** alpha_t)
+    
+#     return rho + delta_rho_per_cycle
 
-#     # Equation 5: rho_n = rho_{n-1} + A_t * (Delta_G_t)^alpha_t
-#     delta_rho = A_t * (delta_G_t ** alpha_t)
-    
-#     # We scale this per-cycle damage by the measurement interval
-#     # Assuming measurements are taken every 5000 cycles
-#     return rho + delta_rho * 5000
+# def g2_stiffness_model(rho):
+#     """
+#     Calculates D from rho.
+#     """
+#     return 1 / (1 + A_CONST * rho * R_L_CONST)
 
-# def physics_state_transition(particles):
+# def physics_state_transition(particles_state, particles_params, num_cycles=1):
 #     """
-#     The full state transition function for the particle filter.
-#     1. Propagate micro-cracks (rho) using Paris' Law.
-#     2. Calculate the corresponding macro-stiffness (D).
+#     The full hierarchical state transition function.
+#     Simulates N particles forward by num_cycles.
 #     """
-#     rho_n_minus_1 = particles[:, 0]
+#     rho_current = particles_state[:, 0]
+#     A_t = particles_params[:, 0]
+#     alpha_t = particles_params[:, 1]
     
-#     # 1. Predict next rho
-#     rho_n = paris_law_crack_growth(rho_n_minus_1)
+#     num_cycles = int(num_cycles)
+#     if num_cycles < 1:
+#         num_cycles = 1
+        
+#     for _ in range(num_cycles):
+#         rho_current = g1_paris_law_model(rho_current, A_t, alpha_t)
+#         # Add a safety clip inside the loop
+#         rho_current = np.clip(rho_current, 0, 1.0) 
     
-#     # 2. Calculate corresponding D
-#     xi = calculate_xi()
-#     D_n = stiffness_reduction_model(rho_n, xi)
+#     D_final = g2_stiffness_model(rho_current)
+#     D_final = np.clip(D_final, 0, 1.0)
     
-#     return np.stack([rho_n, D_n], axis=1)
+#     # Handle any NaNs that might have slipped through
+#     rho_current = np.nan_to_num(rho_current, nan=1.0)
+#     D_final = np.nan_to_num(D_final, nan=0.0)
+    
+#     return np.stack([rho_current, D_final], axis=1)
 
 # scripts/utils.py
 import numpy as np
 
-# --- Physical Constants (from Table 1 & text) ---
-Ex_S = 137.5e9   # Longitudinal Modulus [Pa] [cite: 157]
-Ex_90 = 8.4e9     # Transverse Modulus [Pa] [cite: 157]
-G = 6.2e9         # Shear Modulus [Pa] [cite: 157]
-t = 0.132e-3      # Ply thickness [m] [cite: 157]
+# --- Physical Constants (from your plan & Table 1) ---
+Ex_S = 137.5e9   # Longitudinal Modulus [Pa] (Ex)
+Ex_90 = 8.4e9     # Transverse Modulus [Pa] (Ey)
+G = 6.2e9         # Shear Modulus [Pa]
+t = 0.132e-3      # Ply thickness [m]
 
-# Laminate stacking assumptions [0_n / 90_m / 0_n]
-n_plies_0 = 4
-n_plies_90 = 8
+# Laminate stacking [0_n / 90_m / 0_n]
+n_plies_0 = 4     # n=4
+n_plies_90 = 8    # m=8
 ts = t * n_plies_0  # Thickness of 0-degree sub-laminate
 t90 = t * n_plies_90 # Thickness of 90-degree sub-laminate
 d0 = 0.01e-3      # Assumed resin-rich thickness
-l_bar = 0.5       # Assumed dimensionless half-spacing
+l_bar = 0.5       # Assumed dimensionless half-spacing (l)
 
-# --- Pre-calculate constants for speed ---
+# --- Pre-calculate constants for stiffness model (Eq 2) ---
 XI = np.sqrt((G / d0) * (1 / (Ex_S * ts) + 1 / (Ex_90 * t90)))
 A_CONST = (Ex_S * t90) / (Ex_90 * ts)
 R_L_CONST = (2 / XI) * np.tanh(XI * l_bar)
 
 
-def g1_paris_law_model(rho_n_minus_1, A_t, alpha_t):
+def g1_paris_law_model(rho, A_t, alpha_t, delta_n=1):
     """
-    State transition g1 for micro-crack density (rho).
-    Implements rho_n = rho_{n-1} + A_t * (Delta_G_t)^alpha_t 
+    Calculates the *next* rho after 'delta_n' CYCLES in a single step.
+    (Implements Section 3.1)
     """
+    # STABLE PLACEHOLDER for Delta_G_t
+    # Model Delta_G_t as increasing with crack density
+    delta_G_t = 1.0 + 10.0 * rho
     
-    # --- STABLE PLACEHOLDER for Delta_G_t ---
-    # The real Eq (1) is very complex. We use a stable model
-    # where G_t increases with crack density rho.
-    # This must be non-zero to prevent math errors when alpha_t is high.
-    delta_G_t = 1.0 + 100 * rho_n_minus_1
+    # Calculate damage rate per-cycle
+    delta_rho_per_cycle = A_t * (delta_G_t ** alpha_t)
     
-    # Calculate change in rho (per cycle)
-    # NOTE: The paper's data is sampled every ~5000 cycles
-    # We'll assume the model predicts the change over that *step*
-    delta_rho = A_t * (delta_G_t ** alpha_t)
+    # --- START FIX ---
+    # Calculate total damage for this step = rate * num_cycles
+    total_delta_rho = delta_rho_per_cycle * delta_n
+    # --- END FIX ---
     
-    rho_n = rho_n_minus_1 + delta_rho
-    return rho_n
+    return rho + total_delta_rho
 
-def g2_stiffness_model(rho_n):
+def g2_stiffness_model(rho):
     """
-    State transition g2 for stiffness ratio (D).
-    Implements D = 1 / (1 + a * rho * R(l)) 
+    Calculates D from rho.
+    (Implements Section 3.2)
     """
-    D_n = 1 / (1 + A_CONST * rho_n * R_L_CONST)
-    return D_n
+    return 1 / (1 + A_CONST * rho * R_L_CONST)
 
-def physics_state_transition(particles):
+def physics_state_transition(particles_state, particles_params, num_cycles=1):
     """
-    The full hierarchical state transition function for the particle filter.
-    Takes N particles (rho, D, A_t, alpha_t) and predicts (rho_n, D_n)
+    The full hierarchical state transition function.
+    Simulates N particles forward by num_cycles in a SINGLE STEP.
     """
-    # Unpack particle data
-    rho_n_minus_1 = particles[:, 0]
-    # D_n_minus_1 is not needed for prediction, as D_n depends on rho_n
-    A_t = particles[:, 2]
-    alpha_t = particles[:, 3]
+    rho_current = particles_state[:, 0]
+    A_t = particles_params[:, 0]
+    alpha_t = particles_params[:, 1]
     
-    # 1. Propagate micro-cracks (rho) using Paris' Law
-    rho_n = g1_paris_law_model(rho_n_minus_1, A_t, alpha_t)
+    num_cycles = int(num_cycles)
+    if num_cycles < 1:
+        num_cycles = 1
+        
+    # --- START FIX ---
+    # REMOVED THE LOOP.
+    # Calculate the next state in a single shot by passing num_cycles.
+    rho_next = g1_paris_law_model(rho_current, A_t, alpha_t, delta_n=num_cycles)
+    # --- END FIX ---
     
-    # 2. Calculate the corresponding macro-stiffness (D)
-    D_n = g2_stiffness_model(rho_n)
+    # Apply safety clips
+    rho_next = np.clip(rho_next, 0, 1.0)
     
-    # Return the new state [rho_n, D_n]
-    return np.stack([rho_n, D_n], axis=1)   
+    D_final = g2_stiffness_model(rho_next)
+    D_final = np.clip(D_final, 0, 1.0)
+    
+    # Handle any NaNs that might have slipped through
+    rho_next = np.nan_to_num(rho_next, nan=1.0)
+    D_final = np.nan_to_num(D_final, nan=0.0)
+    
+    return np.stack([rho_next, D_final], axis=1)
