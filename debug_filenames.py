@@ -3,7 +3,7 @@ from pathlib import Path
 # --- !! CHANGE THIS !! ---
 # Let's inspect one of the folders that failed.
 # Please pick one from your log, for example: "data/Layup1/Coupon_L1_S11_F"
-coupon_folder_path = Path("data/Layup1/Coupon_L1_S11_F")
+coupon_folder_path = Path("data/Layup2/Coupon_L2_S17_F")
 # ---
 
 pzt_path = coupon_folder_path / "PZT-data"
@@ -28,7 +28,7 @@ else:
 # --- List StrainData files ---
 print(f"\nListing files in: {strain_path}")
 if strain_path.exists():
-    strain_files = [f.name for f in strain_path.glob("*.mat")]
+    strain_files = [f.name for f in strain_path.glob("*")]
     if strain_files:
         # Show all strain files (usually fewer)
         print("\n".join(sorted(strain_files)))

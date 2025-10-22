@@ -3,10 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def plot_all_results(df, coupon_name, save_path):
-    """
-    Generates all 4 plots similar to Figure 2 in the paper
-    and saves the figure to save_path.
-    """
     fig, axs = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle(f'Particle Filter Damage Prognosis: {coupon_name}', fontsize=16)
     
@@ -26,7 +22,7 @@ def plot_all_results(df, coupon_name, save_path):
     axs[0, 1].set_xlabel('Cycle (n)')
     axs[0, 1].set_ylabel('Stiffness Ratio (D)')
     axs[0, 1].legend()
-    axs[0, 1].set_ylim(top=1.0)
+    axs[0, 1].set_ylim(top=1.0, bottom=0.0) # Set bottom to 0
 
     # --- c) RUL Prediction Cone ---
     true_eol = df['cycle'].iloc[-1]
@@ -41,26 +37,15 @@ def plot_all_results(df, coupon_name, save_path):
     axs[1, 0].legend()
     axs[1, 0].set_ylim(bottom=0)
     
-    # --- d) Parameter evolution ---
-    ax_d2 = axs[1, 1].twinx()
-    
-    axs[1, 1].plot(df['cycle'], df['A_t_filtered'], 'r-', label='A_t (θ1) Estimate')
-    axs[1, 1].set_ylabel('A_t (θ1)', color='r')
+    # --- d) Parameter evolution (MODIFIED) ---
+    axs[1, 1].plot(df['cycle'], df['A_t_filtered'], 'r-', label='A_t (Damage Rate) Estimate')
+    axs[1, 1].set_ylabel('A_t (Damage Rate)', color='r')
     axs[1, 1].tick_params(axis='y', labelcolor='r')
-    
-    ax_d2.plot(df['cycle'], df['alpha_t_filtered'], 'b-', label='α_t (θ2) Estimate')
-    ax_d2.set_ylabel('α_t (θ2)', color='b')
-    ax_d2.tick_params(axis='y', labelcolor='b')
-
     axs[1, 1].set_title('d) Parameter Evolution')
     axs[1, 1].set_xlabel('Cycle (n)')
-    
-    lines1, labels1 = axs[1, 1].get_legend_handles_labels()
-    lines2, labels2 = ax_d2.get_legend_handles_labels()
-    ax_d2.legend(lines1 + lines2, labels1 + labels2, loc='best')
+    axs[1, 1].legend()
+    # --- END MODIFICATION ---
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    # Save the figure instead of showing it
     plt.savefig(save_path)
-    plt.close(fig) # Close the figure to free memory
+    plt.close(fig)

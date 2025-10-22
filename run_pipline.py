@@ -3,35 +3,29 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import warnings
-import re # Import regex
+import re 
 
-# Import all our custom pipeline functions
 from scripts.load_data import aggregate_coupon_data
 from scripts.feature_extraction import compute_damage_indices
 from scripts.rul_prediction import predict_RUL_series
 from scripts.visualize_results import plot_all_results
 
-# Suppress pandas FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def main():
-    """
-    Main orchestrator to run the RUL prediction pipeline
-    for all layups and coupons.
-    """
     print("Starting RUL Prediction Pipeline...")
     
-    # --- 4. Particle Filter Configuration ---
+    # --- 4. Particle Filter Configuration (MODIFIED) ---
     pf_config = {
         'N': 1000,
         'sigma_state_rho': 1e-3,
         'sigma_state_D': 1e-4,
-        'sigma_param_At': 1e-7,
-        'sigma_param_alpha_t': 1e-4,
+        'sigma_param_At': 1e-8,  # Allow the filter to learn faster  # Noise for the single parameter (damage rate)
         'init_state': [0.0, 1.0],
-        'init_params_mean': [8.5e-4, 1.8],
-        'init_params_cov': np.diag([1e-7, 0.1])
+        'init_params_mean': [1e-6], # Try a 5x larger initial guess # Initial guess for damage rate (A_t)
+        'init_params_cov': np.diag([1e-12]) # Initial uncertainty for A_t
     }
+    # --- END MODIFICATION ---
     
     data_root = Path("data")
     results_root = Path("results")
@@ -60,38 +54,29 @@ def main():
         for coupon_dir in coupon_dirs:
             coupon_name = coupon_dir.name
             
-            # --- START FIX ---
-            # Dynamically find the Specimen ID (e.g., L1_S11) from the folder name
             match = re.search(r'(L\d+_S\d+)', coupon_name)
             if not match:
                 print(f"    - Skipping {coupon_name}: Could not parse specimen ID from folder name.")
                 continue
             
-            specimen_id = match.group(1) # e.g., "L1_S11"
+            specimen_id = match.group(1)
             
-            # Define paths for BOTH folders
             pzt_folder = coupon_dir / "PZT-data"
             strain_folder = coupon_dir / "StrainData"
             
             if not pzt_folder.exists() or not strain_folder.exists():
                 print(f"    - Skipping {coupon_name}: Missing 'PZT-data' or 'StrainData' folder.")
                 continue
-            # --- END FIX ---
             
             print(f"    - Processing {coupon_name} (ID: {specimen_id})...")
             
             try:
-                # --- 2.2 Data Aggregation ---
-                # --- START FIX ---
-                # Pass all THREE required arguments
                 df_raw = aggregate_coupon_data(pzt_folder, strain_folder, specimen_id)
-                # --- END FIX ---
 
                 if df_raw.empty:
                     print(f"    - Skipping {coupon_name}: No data loaded/aligned.")
                     continue
 
-                # --- 2.3 Damage Feature Extraction ---
                 df_damage = compute_damage_indices(df_raw)
 
                 df_clean = df_damage.dropna(subset=['rho_smooth', 'D_smooth'])
@@ -100,10 +85,8 @@ def main():
                     print(f"    - Skipping {coupon_name}: No valid data after cleaning.")
                     continue
                 
-                # --- 3-5. Run Filter & RUL Prediction ---
                 df_final = predict_RUL_series(df_clean, pf_config)
                 
-                # --- 6. Visualization & Reporting ---
                 csv_path = results_root / f"{coupon_name}_rul_prediction.csv"
                 plot_path = plots_root / f"{coupon_name}_rul_plot.png"
                 

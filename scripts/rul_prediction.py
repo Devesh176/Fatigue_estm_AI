@@ -1,40 +1,41 @@
 # scripts/4_rul_prediction.py
 import numpy as np
 import pandas as pd
-from scripts.utils import physics_state_transition
+from scripts.utils import g1_linear_model, g2_stiffness_model, physics_state_transition # Import new model
 from scripts.bayesian_filter import ParticleFilter 
 
 def predict_probabilistic_RUL(particle_filter, current_cycle, rho_thresh=0.4, D_thresh=0.88, max_steps=100, step_size_cycles=50000):
-    """
-    Predicts RUL by propagating each particle to the failure threshold.
-    """
+    
     particles_state_future = particle_filter.particles_state.copy()
-    particles_params_future = particle_filter.particles_params.copy()
+    particles_params_future = particle_filter.particles_params.copy() # Now (N, 1)
     N = particle_filter.N
     
     eol_cycles = np.full(N, -1.0) 
 
     for i in range(N):
-        part_state = particles_state_future[i:i+1]
-        part_params = particles_params_future[i:i+1]
+        # --- START FIX: Use new 1-param model ---
+        rho, D = particles_state_future[i]
+        A_t = particles_params_future[i, 0] # Get the single param
         
         n_future = current_cycle
         
         for step in range(max_steps):
-            rho, D = part_state[0]
             if rho >= rho_thresh or D <= D_thresh:
                 break
             
-            part_state = physics_state_transition(part_state, part_params, num_cycles=step_size_cycles)
+            # Use the new, simple, stable model
+            rho = g1_linear_model(rho, A_t, delta_n=step_size_cycles)
+            D = g2_stiffness_model(rho)
+            
             n_future += step_size_cycles
+        # --- END FIX ---
         
         eol_cycles[i] = n_future
-
-    # Calculate RUL using the weighted average of particle EOLs
+    
+    # (Rest of RUL calculation is unchanged)
     mean_eol = np.average(eol_cycles, weights=particle_filter.weights)
     rul = max(0, mean_eol - current_cycle)
 
-    # Calculate 5th and 95th percentiles
     sorted_indices = np.argsort(eol_cycles)
     sorted_eols = eol_cycles[sorted_indices]
     sorted_weights = particle_filter.weights[sorted_indices]
@@ -59,16 +60,15 @@ def predict_probabilistic_RUL(particle_filter, current_cycle, rho_thresh=0.4, D_
     }
 
 def predict_RUL_series(df, pf_config):
-    """
-    Runs the particle filter and predicts RUL at each time step.
-    """
+    
+    # --- START FIX: Update filter creation ---
     pf = ParticleFilter(
         N=pf_config['N'],
         sigma_state_rho=pf_config['sigma_state_rho'],
         sigma_state_D=pf_config['sigma_state_D'],
-        sigma_param_At=pf_config['sigma_param_At'],
-        sigma_param_alpha_t=pf_config['sigma_param_alpha_t']
+        sigma_param_At=pf_config['sigma_param_At'] # Only pass 1 param noise
     )
+    # --- END FIX ---
     
     pf.initialize(
         init_state=pf_config['init_state'],
@@ -79,7 +79,6 @@ def predict_RUL_series(df, pf_config):
     results = []
     last_cycle = 0
     
-    # Auto-detect RUL step size (should be 50k)
     if len(df['cycle']) > 1:
         rul_step_size = np.median(np.diff(df['cycle']))
     else:
@@ -98,16 +97,18 @@ def predict_RUL_series(df, pf_config):
         
         pf.update(measurement)
         
-        est_rho, est_D, est_At, est_alpha = pf.estimate()
+        # --- START FIX: Unpack 1 param ---
+        # Estimate will return [rho, D, A_t]
+        est = pf.estimate() 
         
         rul_dict = predict_probabilistic_RUL(pf, current_cycle, step_size_cycles=rul_step_size)
         
         rul_dict['cycle'] = current_cycle
-        rul_dict['rho_filtered'] = est_rho
-        rul_dict['D_filtered'] = est_D
-        rul_dict['A_t_filtered'] = est_At
-        rul_dict['alpha_t_filtered'] = est_alpha
+        rul_dict['rho_filtered'] = est[0]
+        rul_dict['D_filtered'] = est[1]
+        rul_dict['A_t_filtered'] = est[2] # The 3rd element is A_t
         results.append(rul_dict)
+        # --- END FIX ---
         
         last_cycle = current_cycle
         
